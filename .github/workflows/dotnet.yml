@@ -36,4 +36,4 @@ jobs:
         automatic_release_tag: "Builder"
         prerelease: false
         files: |
-            D:\a\Indoor-Gensound-Gen\Indoor-Gensound-Gen\bin\Debug\net9.0\win-x64\caco.dll
+            Debug\net9.0\win-x64\caco.dll
