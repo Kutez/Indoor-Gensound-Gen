@@ -26,12 +26,5 @@ jobs:
       run: dotnet build --no-restore
     - name: Test
       run: dotnet test --no-build --verbosity normal
-    - name: Publish
-      uses: "marvinpinto/action-automatic-releases@latest"
-      with:
-        repo_token: "${{ secrets.GITHUB_TOKEN }}"
-        automatic_release_tag: "${{steps.datetime.outputs.today}}"
-        title: "${{steps.datetime.outputs.today}}"
-        prerelease: false
-        files: |
-          *.exe
+    - name: Download all workflow run artifacts
+      uses: actions/download-artifact@v4
