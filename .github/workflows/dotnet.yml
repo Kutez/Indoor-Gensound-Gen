@@ -36,4 +36,4 @@ jobs:
         automatic_release_tag: "Builder"
         prerelease: false
         files: |
-            *.exe
+            *.dll
