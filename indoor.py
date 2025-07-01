@@ -4,8 +4,16 @@ from pathlib import Path
 import os
 import sys
 import json
+import shutil
+import time
 
-sndType = ["shoot","shoot_actor","silncer_shoot","silncer_shot_actor"]
+file_path = Path(__file__).parents[0].__str__()
+
+if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+    file_path = Path(sys.executable).parents[0].__str__()
+
+sndType = ["shoot","shoot_actor","silncer_shot","silncer_shot_actor","reload","reload_empty","draw","holster"]
+sndTypeSetting = ["shoot","shoot","shoot","shoot","action","action","action","action"]
 extraSndList = ["bolt","pump"]
 
 print("Commands :")
@@ -17,15 +25,10 @@ config = json.load(open("indoor_config.json","r"))
 
 cmd = input("Type command: ")
 
-file_path = Path(__file__).resolve().parents[0].__str__()
-
-if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-    file_path = Path(sys.executable).resolve().parents[0].__str__()
-
 def getFileName(stri):
     return stri.split("\\")[len(stri.split("\\"))-1]
 
-def genSound(input,name):
+def genSound(input,name,setting):
     board = Pedalboard([
         Gain(1.5),
         LowShelfFilter(cutoff_frequency_hz = 15000, gain_db = config["loudness_Gain"]),
@@ -39,24 +42,38 @@ def genSound(input,name):
     for i in bRange(extraSndList):
         if name.find(extraSndList[i])!=-1:
                 board = Pedalboard([
-                    Gain(1.25),
-                    LowShelfFilter(cutoff_frequency_hz = 15000, gain_db = config["loudness_Gain"]*0.55),
-                    Reverb(room_size= config["room_size"], 
+                    Gain(1.15),
+                    LowShelfFilter(cutoff_frequency_hz = 15000, gain_db = config["loudness_Gain"]*0.5),
+                    Reverb(
+                    room_size= config["room_size"]*1.5, 
                     damping= config["damping"], 
-                    wet_level = config["wet_level"]*1.25, 
+                    wet_level = config["wet_level"]*1.15, 
                     dry_level = config["dry_level"], 
-                    width = config["width"], 
+                    width = config["width"]*1.2, 
                     freeze_mode = config["freeze_mode"]),])
                 break
+    if setting == "action":
+        board = Pedalboard([
+            Gain(1.4),
+            Reverb(
+            room_size= config["room_size"]*1.75, 
+            damping= config["damping"], 
+            wet_level = config["wet_level"]*1.15, 
+            dry_level = config["dry_level"], 
+            width = config["width"]*1.5, 
+            freeze_mode = config["freeze_mode"]),])
 
     with AudioFile(input.__str__().replace("\n","")) as f:
     # Open an audio file to write to:
-        with AudioFile(input.resolve().parents[0].__str__()+"\\"+name, "w", f.samplerate, f.num_channels) as o:
-        # Read one second of audio at a time, until the file is empty:
+        checkPath(convDir(input.parents[0].__str__()))
+        with AudioFile(convDir(input.parents[0].__str__())+"\\"+name, "w", f.samplerate, f.num_channels) as o:
+        # Read one second of audio at a time, until there file is empty:
             while f.tell() < f.frames:
                 chunk = f.read(f.samplerate)
                 effected = board(chunk, f.samplerate, reset=False)
                 o.write(effected)
+
+
 output = open("output.txt","r").readlines()
 s = 1
 open(file_path+"\\gamedata\\configs\\mod_system_aaaaa_indoor_bak_gen.ltx","w").close() # Create a new config
@@ -69,13 +86,11 @@ def getFullSndName(i):
     return "snd_"+sndType[i]
 
 def getLayersCount(dirs,sound_type):
-    if sound_type == "silncer_shoot": # it's my fault :)
-        sound_type = "silncer_shot"
     for i in range(len(dirs)):
         if dirs[i].find("snd_"+sound_type)!=-1:
             return int(dirs[i][len(dirs[i])-1]),i+1
 
-        
+
 def createBlankArray(type):
     a = []
     for i in range(len(sndType)):
@@ -109,8 +124,20 @@ def bRange(ar,m = -1):
             i += 1
         return a
 
+def convDir(stri):
+    if stri.lower().find("\\gamedata\\sounds\\")!=-1:
+        return stri[:(stri.lower().find("\\gamedata\\sounds\\")+17)]+"indoor_gen\\"+stri[(stri.lower().find("\\gamedata\\sounds\\")+17):]
+
+
+def checkPath(path):
+    if not os.path.exists(path):
+        os.makedirs(path)
+
 if cmd == "delete" or cmd == "reset":
     remove_list = []
+    if os.path.exists(file_path+"\\gamedata\\sounds\\indoor_gen"):
+        shutil.rmtree(file_path+"\\gamedata\\sounds\\indoor_gen")
+        print("Wiped indoor gen folder")
     for root, dir, files in os.walk(file_path+"\\gamedata\\sounds"):
         for f in files:
             if f.find("indoor_gunsnd_bak")!=-1:
@@ -119,9 +146,13 @@ if cmd == "delete" or cmd == "reset":
         print("Old Sounds Detected, Removing")
         for i in range(len(remove_list)):
             print("Remove ", i, " Files")
-            os.remove(remove_list[i])
+            if os.path.isdir(remove_list[i]):
+                os.rmdir(remove_list[i])
+            else:
+                os.remove(remove_list[i])
 
 if cmd != "delete":
+    checkPath(file_path+"\\gamedata\\sounds\\indoor_gen\\")
     for m in range(len(output)):
         dirs = output[m].split("..")
         dirs[len(dirs)-1] = dirs[len(dirs)-1].replace("\n","") # clean up
@@ -146,14 +177,15 @@ if cmd != "delete":
                     for j in bRange(sndDirs[i]):
                         if sndFiles[i][j].is_file():
                             extraName = getExtraName(sndDirs[i][j])
-                            fileName = "indoor_gunsnd_bak_"+getFullSndName(i)+extraName+str(j)+".ogg"
-                            if not Path(sndFiles[i][j].resolve().parents[0].__str__()+"\\"+fileName).is_file():
-                                genSound(sndFiles[i][j],fileName)
-                            sndProcessedFiles[i].append(Path(sndDirs[i][j]).resolve().parents[0].__str__()+"\\"+fileName.replace(".ogg",""))
-                    config_file.write(getFullSndName(i)+"_indoor = "+wp_name+"_"+getFullSndName(i)+"_bak\n")
+                            fileName = getFullSndName(i)+extraName+str(j)+".ogg"
+                            if not Path(convDir(sndFiles[i][j].parents[0].__str__()+"\\"+fileName)).is_file():
+                                genSound(sndFiles[i][j],fileName,sndTypeSetting[i])
+                            sndProcessedFiles[i].append(convDir(sndFiles[i][j].parents[0].__str__()+"\\"+fileName).replace(".ogg",""))
+                    if sndProcessedFiles[i]:
+                        config_file.write(getFullSndName(i)+"_indoor = "+wp_name+"_"+getFullSndName(i)+"_gen\n")
             for i in range(len(sndType)):
                 if sndDirs[i] and sndProcessedFiles[i]:
-                    config_file.write("["+wp_name+"_"+getFullSndName(i)+"_bak]"+"\n")
+                    config_file.write("@["+wp_name+"_"+getFullSndName(i)+"_gen]"+"\n")
                     extraNameLayer = {}
                     extraLayersCount = 2
                     for j in bRange(sndProcessedFiles[i]):
@@ -166,15 +198,31 @@ if cmd != "delete":
                                 index = extraNameLayer[extra][1]
                                 if index == 0: 
                                     index = "" 
-                                config_file.write("snd_"+str(extraNameLayer[extra][0])+"_layer"+str(index)+" = "+sndProcessedFiles[i][j].__str__().replace(file_path+"\\","")+"\n")
+                                config_file.write("snd_"+str(extraNameLayer[extra][0])+"_layer"+str(index)+" = "+sndProcessedFiles[i][j].__str__().replace(file_path+"\\gamedata\\sounds\\","")+"\n")
                                 extraed = True
                                 extraNameLayer[extra][1] +=1
                         if not extraed:
                             num = j
                             if j==0: 
                                 num = ""
-                            config_file.write("snd_1_layer"+str(num)+" = "+sndProcessedFiles[i][j].__str__().replace(file_path+"\\","")+"\n")
+                            config_file.write("snd_1_layer"+str(num)+" = "+sndProcessedFiles[i][j].__str__().replace(file_path+"\\gamedata\\sounds\\","")+"\n")
                     config_file.write("\n")
         print("Processing: ",s,"/",len(output))
         s+=1
+
+    ### Setup commenter
+    # convert to config file to .txt then back to .ini in order support break line :/, im gonna kms
+    Path(file_path+"\\caco\\config.ini").rename(Path(file_path+"\\caco\\config.ini").with_suffix(".txt"))
+    with open(file_path+"\\caco\\config.txt","r") as cacoConfigFile:
+        cacoConfig = cacoConfigFile.readlines()
+        cacoConfig[0] = "GamedataDir="+file_path+"\\gamedata"+"\n"
+        cacoConfig[1] = "FfmpegBinDir="+file_path+"\\caco\\fffmpeg-bin"+"\n"
+        cacoConfig[2] = "InputDir="+file_path+"\\gamedata\\sounds\\indoor_gen"+"\n"
+        cacoConfig[3] = "OutputDir="+file_path+"\\gamedata\\sounds\\indoor_gen"+"\n"
+        open(file_path+"\\caco\\config.txt","w").writelines(cacoConfig)
+    Path(file_path+"\\caco\\config.txt").rename(Path(file_path+"\\caco\\config.txt").with_suffix(".ini"))
+    open(file_path+"\\caco\\runner.bat","w").write(file_path+"\\caco\\caco.exe\nPause")
+    print("Openning CACO commenter..........")
+    time.sleep(3)
+    os.startfile(file_path+"\\caco\\runner.bat")
 config_file.close()
